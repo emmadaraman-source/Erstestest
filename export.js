@@ -1,17 +1,19 @@
 // ===== EXPORT PDF =====
 
 const COLUMN_LABELS = {
-    matricule:   "Matricule",
+    matricule:  "Matricule",
+    vraiMatricule: "numero",
     nom:        "Nom",
     prenom:     "Prénom",
     dateNais:   "Date de naissance",
+    dateEntree: "Date d'entrée",
     cin:        "CIN",
     email:      "Email",
     facebook:   "Facebook",
     tel:        "Téléphone",
     adresse:    "Adresse",
     niveau:     "Niveau",
-    montantAPayer: "Montant à payer",
+    montantAPayer: "Total à payer",
     a1:         "A1",
     a2:         "A2",
     c1:         "C1",

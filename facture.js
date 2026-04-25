@@ -5,18 +5,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const page = path.split("/").pop();
 
     if (page === "facture.html") {
+        // initialiser la page de facture payement
         initFacturePage();
     } else if (page === "list-facture.html") {
+        //initialiser la page list facture
         initListFacturePage();
     }
 });
 
 // --- FACTURE PAGE LOGIC ---
 
+// Facture actuellement affichée
 let currentInvoice = null;
+// etudient selectionné
 let selectedStudent = null;
 
-function initFacturePage() {
+async function initFacturePage() {
+    //recuperation de l'etudiant depuis le stockage local 
     const studentStr = localStorage.getItem("selectedStudent");
     if (!studentStr) {
         alert("Aucun étudiant sélectionné.");
@@ -26,15 +31,35 @@ function initFacturePage() {
 
     selectedStudent = JSON.parse(studentStr);
 
-    // Check if an invoice exists for this student
-    const factures = JSON.parse(localStorage.getItem("facturesData") || "[]");
-    currentInvoice = factures.find(f => f.matricule === selectedStudent.matricule);
-    if (currentInvoice.length > 0) {
-        fillFactureForm(currentInvoice, selectedStudent);
-    } else {
-        fillFactureForm([createTemplateInvoice(selectedStudent)], selectedStudent);
+    // Rechercher une facture existante pour cet étudiant dans le cache local dans currentInvoice
+    if (!localStorage.getItem("facturesData")) {
+        console.log("Inicialisation du cache des factures depuis le backend...");
+        const response = await fetch("https://hook.us2.make.com/1vbfcorjkvg53yk4ki1ek14v7qmhvodq");
+
+        if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+
+        const listeFactureExistante = await response.json();
+
+        // Sauvegarder dans localStorage
+        localStorage.setItem("facturesData", JSON.stringify(listeFactureExistante));
     }
+    // récupération des facture depuis le cache local
+    const factures = JSON.parse(localStorage.getItem("facturesData"));
+
+    currentInvoice = factures.filter(f => f.matricule === selectedStudent.Matricule);
+    selectStudent = createTemplateInvoice(selectedStudent);
+    // If no invoice exists, we just display the form with default values and student info
+    
+    if (currentInvoice.length !== 0) {
+        fillFactureForm(currentInvoice);
+    } else {
+        fillFactureForm([createTemplateInvoice(selectedStudent)]);
+
+    }
+
+
 }
+
 
 function createTemplateInvoice(student) {
     return {
@@ -58,29 +83,41 @@ function createTemplateInvoice(student) {
     };
 }
 
-function fillFactureForm(invoice, selectedStudent) {
-    let numeroPayement = invoice[invoice.length - 1].paymentNumber + 1;
-    let refUnique = 'REF-' + crypto.randomUUID();
+// Remplit le formulaire de facture avec les données des factures existantes
+function fillFactureForm(invoice) {
+    let paymentNumber;
+
+    if (invoice.length === 1) {
+        paymentNumber = 1;
+    } else {
+        paymentNumber = invoice.length + 1;
+    }
+    if (!invoice) return;
+    let Jon = invoice[invoice.length - 1];
     // Student Info (Readonly)
-    document.getElementById("matricule").value = selectedStudent.Matricule || "";
-    document.getElementById("nom").value = selectedStudent.nom || "";
-    document.getElementById("prenom").value = selectedStudent.prenom || "";
-    document.getElementById("niveau").value = selectedStudent.niveau || "";
+    document.getElementById("vraiMatricule").value = Jon.matricule || "pas de matricule";
+
+    document.getElementById("nom").value = Jon.nom || "pas de nom";
+    document.getElementById("prenom").value = Jon.prenom || "pas de prenom";
+    document.getElementById("niveau").value = Jon.niveau || "pas de niveau";
 
     // Invoice Info
-    document.getElementById("reference").value = refUnique;
-    document.getElementById("displayRef").innerText = refUnique;
-    document.getElementById("dateFacture").value = invoice.dateFacture;
-    document.getElementById("paymentNumber").value = numeroPayement;
+    document.getElementById("reference").value = Jon.reference;
+
+    document.getElementById("displayRef").innerText = Jon.reference;
+    document.getElementById("dateFacture").value = isoToDate(new Date().toISOString());
+    document.getElementById("paymentNumber").value = paymentNumber;
 
     // Amounts
-    document.getElementById("totalAPayer").innerText = selectedStudent.totalAPayer.toLocaleString();
-    document.getElementById("dejaPayer").innerText = selectedStudent.montantPaye.toLocaleString();
-    document.getElementById("reste").innerText = invoice.reste.toLocaleString();
+    document.getElementById("totalAPayer").innerText = Number(Jon.totalAPayer).toLocaleString();
+    document.getElementById("dejaPayer").innerText = Jon.dejaPayer.toLocaleString();
+    document.getElementById("reste").innerText = Jon.reste.toLocaleString();
 
     // History
-    renderPaymentHistory(invoice.payments);
-    updateStatusBadge(invoice.reste);
+    if (invoice.length > 0) {
+        renderPaymentHistory(invoice);
+    }
+    updateStatusBadge(Jon.reste);
 
     // Toggle Payment Form Visibility
     const formSection = document.getElementById("paymentFormSection");
@@ -95,25 +132,28 @@ function fillFactureForm(invoice, selectedStudent) {
 
 function renderPaymentHistory(payments) {
     const tbody = document.getElementById("paymentHistory");
+    console.log("p.date", payments)
     if (!tbody) return;
     tbody.innerHTML = "";
 
-    if (!payments || payments.length === 0) {
+    if (payments.paymentNumber > 1) {
         tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-400 italic">Aucun paiement effectué.</td></tr>`;
         return;
-    }
-
-    payments.forEach(p => {
-        const row = `
+    } else {
+        payments.forEach(p => {
+            const row = `
             <tr class="hover:bg-gray-50 border-b border-gray-50">
-                <td class="p-4 font-medium text-gray-500">${p.numero}</td>
+                <td class="p-4 font-medium text-gray-500">${p.numeroPaiement}</td>
                 <td class="p-4 text-gray-700">${p.date}</td>
-                <td class="p-4"><span class="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-bold uppercase">${p.mode}</span></td>
-                <td class="p-4 font-bold text-gray-900">${p.montant.toLocaleString()} Ar</td>
+                <td class="p-4"><span class="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-bold uppercase">${p.modePaiement
+                }</span></td>
+                <td class="p-4 font-bold text-gray-900">${p.aktuellPay.toLocaleString()} Ar</td>
+                <td class="p-4 font-bold text-gray-900">${p.reste.toLocaleString()} Ar</td>
             </tr>
         `;
-        tbody.innerHTML += row;
-    });
+            tbody.innerHTML += row;
+        });
+    }
 }
 
 function updateStatusBadge(reste) {
@@ -129,134 +169,102 @@ function updateStatusBadge(reste) {
     }
 }
 
-async function enregistrerPaiement() {
-    const montantInput = document.getElementById("nouveauPaiement");
-    const modePaiement = document.getElementById("modePaiement").value;
-    const reason = document.getElementById("idReason").value || "Acompte";
-    const montant = parseFloat(montantInput.value);
+function recupererDonnees() {
+    const data = {
+        etudiant: {
+            matricule: document.getElementById("vraiMatricule").value,
+            nom: document.getElementById("nom").value,
+            prenom: document.getElementById("prenom").value,
+            niveau: document.getElementById("niveau").value
+        },
 
-    // 1. Validate payment amount
-    if (isNaN(montant) || montant <= 0) {
-        alert("Veuillez entrer un montant valide.");
-        return;
-    }
+        facture: {
+            reference: document.getElementById("reference").value,
+            dateFacture: document.getElementById("dateFacture").value,
+            paymentNumber: Number(document.getElementById("paymentNumber").value.replace(/,/g, "")),
+            raison: document.getElementById("idReason").value || "Acompte",
+            modePaiement: document.getElementById("modePaiement").value 
+        },
 
-    let factures = JSON.parse(localStorage.getItem("facturesData") || "[]");
+        paiement: {
+            montant: Number(document.getElementById("nouveauPaiement").value.replace(/,/g, ""))
+        },
 
-    // 2. Prepare temporary invoice state
-    let tempInvoice = currentInvoice ? JSON.parse(JSON.stringify(currentInvoice)) : null;
-
-    if (!tempInvoice) {
-        const today = new Date().toLocaleDateString('fr-CA');
-        // Synchronize with totalAPayer and montantPaye from student list
-        const total = parseFloat(selectedStudent.totalAPayer || selectedStudent.montantAPayer) || 0;
-        const deja = parseFloat(selectedStudent.montantPaye) || 0;
-        const reste = total - deja;
-
-        tempInvoice = {
-            id: Date.now(),
-            reference: "FACT-" + Date.now(),
-            dateFacture: today,
-            matricule: selectedStudent.matricule,
-            nom: selectedStudent.nom,
-            prenom: selectedStudent.prenom,
-            niveau: selectedStudent.niveau,
-            totalAPayer: total,
-            dejaPayer: deja,
-            reste: reste,
-            paymentNumber: 0,
-            payments: [],
-            reason: reason
-        };
-    }
-
-    if (montant > tempInvoice.reste) {
-        if (!confirm("Le montant dépasse le reste à payer. Continuer ?")) {
-            return;
+        resume: {
+            totalAPayer: Number(document.getElementById("totalAPayer").textContent.replace(/,/g, "")),
+            dejaPayer: Number(document.getElementById("dejaPayer").textContent.replace(/,/g, "")) || 0,
+            reste: Number(document.getElementById("reste").textContent.replace(/,/g, "")),
+            status: document.getElementById("statusBadge").textContent.replace(/,/g, "")
         }
-    }
-
-    // 3. Prepare data for the webhook (Final state values)
-    const today = new Date().toLocaleDateString('fr-CA');
-    const nextPaymentNumber = tempInvoice.paymentNumber + 1;
-    const nextDejaPayer = tempInvoice.dejaPayer + montant;
-    const nextReste = tempInvoice.totalAPayer - nextDejaPayer;
-
-    const dataToSend = {
-        reference: tempInvoice.reference,     // Col A
-        matricule: tempInvoice.matricule,     // Col B
-        nom: tempInvoice.nom,                 // Col C
-        prenom: tempInvoice.prenom,           // Col D
-        niveau: tempInvoice.niveau,           // Col E
-        TotalApayer: tempInvoice.totalAPayer, // Col F
-        montantPaye: nextDejaPayer,           // Col G
-        Aktuell_pay: montant,                 // Col H
-        paiement: nextReste <= 0 ? "PAYE" : "EN COURS", // Col I
-        DejatPayer: nextDejaPayer,            // Col J
-        reste: nextReste,                     // Col K
-        modePaiement: modePaiement,           // Col L
-        raison: reason,                       // Col M
-        numeroPaiemen: nextPaymentNumber,     // Col N
-        datePaiement: today                    // Col O
     };
+
+    return data;
+}
+async function enregistrerPaiement() {
 
     // 4. Send to Webhook with Timeout Protection
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
     try {
-        console.log("Sending to Webhook:", dataToSend);
-
-        const response = await fetch("https://hook.us2.make.com/jpylueiuew4elziiderefx1rdvld51dn", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(dataToSend),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-            throw new Error(`HTTP Error ${response.status}`);
+        const data = recupererDonnees();
+        if (data.paiement.montant + data.resume.DejatPayer < data.resume.totalAPayer) {
+            data.resume.status = "En cours";
+        } else if (data.paiement.montant + data.resume.DejatPayer === data.resume.totalAPayer) {
+            data.resume.status = "Payé"
         }
+        if (data.paiement.montant > 9999) {
+            console.log("data to send", data);
+            const response = await fetch("https://hook.us2.make.com/7lakd3li4bggrk72dsvr5p4figicf6j6", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+                signal: controller.signal
+            });
 
-        const result = await response.json();
+            clearTimeout(timeoutId);
 
-        // Ensure backend explicitly confirmed success
-        if (result && result.success === false) {
-            throw new Error("Webhook returned success:false");
-        }
+            if (!response.ok) {
+                throw new Error(`HTTP Error ${response.status}`);
+            }
 
-        console.log("Webhook success confirmed");
+            const result = await response.json();
 
-        // 5. Update Invoice object locally only after confirmed webhook success
-        tempInvoice.paymentNumber = nextPaymentNumber;
-        tempInvoice.payments.push({
-            numero: nextPaymentNumber,
-            date: today,
-            mode: modePaiement,
-            montant: montant
-        });
-        tempInvoice.dejaPayer = nextDejaPayer;
-        tempInvoice.reste = nextReste;
+            // Ensure backend explicitly confirmed success
+            if (result && result.success === false) {
+                throw new Error("Webhook returned success:false");
+            }
 
-        // Commit to global currentInvoice
-        currentInvoice = tempInvoice;
+            console.log("Webhook success confirmed");
 
-        // 6. Save to localStorage
-        const index = factures.findIndex(f => f.matricule === currentInvoice.matricule);
-        if (index !== -1) {
-            factures[index] = currentInvoice;
+            alert("Paiement enregistré avec succès.");
+            dataNouvFact = {
+                nom: data.etudiant.nom,
+                date: data.facture.dateFacture,
+                reste: data.resume.totalAPayer - data.resume.dejaPayer,
+                niveau: data.etudiant.niveau,
+                prenom: data.etudiant.prenom,
+                raison: data.facture.raison,
+                paiement: data.resume.status,
+                dejaPayer: data.resume.dejaPayer,
+                matricule: data.etudiant.matricule,
+                reference: data.facture.reference,
+                aktuellPay: data.paiement.montant,
+                montantPaye: data.resume.dejaPayer + data.paiement.montant,
+                totalAPayer: data.resume.totalAPayer,
+                modePaiement: data.facture.modePaiement,
+                numeroPaiement: data.facture.paymentNumber
+            }
+            actuellList = JSON.parse(localStorage.getItem("facturesData"));
+            localStorage.removeItem("facturesData");
+            actuellList.push(dataNouvFact);
+            localStorage.setItem("facturesData", JSON.stringify(actuellList));
+            listEtu = JSON.parse(localStorage.getItem("studentsData"));
+            etudiantQuiPay = listEtu.find(f => f.Matricule === selectedStudent.Matricule)
+            etuModif = etudiantQuiPay. 
         } else {
-            factures.push(currentInvoice);
+            alert("le montant doit être supérieur à 9999 Ar");
         }
-        localStorage.setItem("facturesData", JSON.stringify(factures));
-
-        // 7. Clear input and refresh UI
-        montantInput.value = "";
-        fillFactureForm(currentInvoice);
-        alert("Paiement enregistré avec succès.");
-
     } catch (error) {
         console.error("Webhook error:", error);
         alert("Erreur : connexion impossible. Paiement non enregistré.");
@@ -365,7 +373,7 @@ function filtrerFactures() {
             <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td class="p-4 font-mono text-[10px] font-bold text-blue-600">${f.reference || "-"}</td>
                 <td class="p-4 text-xs text-gray-600 whitespace-nowrap">${formatDate(f.date || f.datePaiement)}</td>
-                <td class="p-4 text-sm font-semibold text-gray-800">${f.matricule || "-"}</td>
+                <td class="p-4 text-sm font-bold text-blue-800">${f.matricule || f.Matricule || "-"}</td>
                 <td class="p-4 text-sm text-gray-700">${f.nom || "-"}</td>
                 <td class="p-4 text-sm text-gray-700">${f.prenom || "-"}</td>
                 <td class="p-4 text-center"><span class="px-2 py-0.5 rounded bg-gray-100 text-[10px] whitespace-nowrap">${f.niveau || "-"}</span></td>
@@ -373,7 +381,8 @@ function filtrerFactures() {
                 <td class="p-4 text-xs text-gray-600">${f.modePaiement || "-"}</td>
                 <td class="p-4 text-center text-xs text-gray-600 font-bold">${f.numeroPaiement || f.numeroPaiemen || "-"}</td>
                 <td class="p-4 text-center text-xs font-bold text-blue-600 bg-blue-50/50">${f.paiement || "0"}</td>
-                <td class="p-4 text-sm font-bold text-green-600 whitespace-nowrap">${Number(f.montantPaye || 0).toLocaleString()} Ar</td>
+                <td class="p-4 text-sm font-bold text-purple-600 whitespace-nowrap">${Number(f.aktuellPay || f.Aktuell_pay || 0).toLocaleString()} Ar</td>
+                <td class="p-4 text-sm font-bold text-green-600 whitespace-nowrap">${Number(f.montantPaye || f.dejaPayer || f.DejatPayer || 0).toLocaleString()} Ar</td>
                 <td class="p-4 text-sm font-bold text-gray-900 whitespace-nowrap">${Number(f.totalAPayer || 0).toLocaleString()} Ar</td>
                 <td class="p-4 text-sm font-black ${parseFloat(f.reste) > 0 ? 'text-orange-600' : 'text-green-600'} whitespace-nowrap">${Number(f.reste || 0).toLocaleString()} Ar</td>
                 <td class="p-4">
@@ -429,15 +438,17 @@ async function syncFacturesDepuisServeur() {
     }
 
     try {
-        const response = await fetch("https://hook.us2.make.com/3xpwsogtxqlqiiw1f9xnji1hl75x04c6");
+        if (!localStorage.getItem("facturesData")) {
+            const response = await fetch("https://hook.us2.make.com/1vbfcorjkvg53yk4ki1ek14v7qmhvodq");
 
-        if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+            if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
 
-        const data = await response.json();
-        allFactures = Array.isArray(data) ? data : [];
+            const data = await response.json();
+            allFactures = Array.isArray(data) ? data : [];
 
-        // Sauvegarder dans localStorage
-        localStorage.setItem("facturesData", JSON.stringify(allFactures));
+            // Sauvegarder dans localStorage
+            localStorage.setItem("facturesData", JSON.stringify(allFactures));
+        }
         renderFacturesTableLocale();
 
     } catch (error) {
@@ -504,10 +515,11 @@ function exportFacturePDF(index) {
     doc.text("Informations Étudiant:", 20, 55);
 
     doc.setFont("helvetica", "normal");
-    doc.text(`Matricule: ${f.matricule}`, 25, 65);
-    doc.text(`Nom: ${f.nom}`, 25, 72);
-    doc.text(`Prénom: ${f.prenom}`, 25, 79);
-    doc.text(`Niveau: ${f.niveau}`, 25, 86);
+    doc.text(`numero: ${f.matricule}`, 25, 65);
+    doc.text(`Matricule: ${f.Matricule || "-"}`, 25, 72);
+    doc.text(`Nom: ${f.nom}`, 25, 79);
+    doc.text(`Prénom: ${f.prenom}`, 25, 86);
+    doc.text(`Niveau: ${f.niveau}`, 25, 93);
 
     // Summary Section
     doc.setFont("helvetica", "bold");
@@ -515,23 +527,24 @@ function exportFacturePDF(index) {
 
     doc.setFont("helvetica", "normal");
     doc.text(`Total à payer: ${Number(f.totalAPayer || 0).toLocaleString()} Ar`, 25, 115);
-    doc.text(`Déjà payé: ${Number(f.montantPaye || 0).toLocaleString()} Ar`, 25, 122);
-    doc.text(`Reste: ${Number(f.reste || 0).toLocaleString()} Ar`, 25, 129);
+    doc.text(`Versement actuel: ${Number(f.aktuellPay || f.Aktuell_pay || 0).toLocaleString()} Ar`, 25, 122);
+    doc.text(`Total déjà payé: ${Number(f.montantPaye || f.dejaPayer || f.DejatPayer || 0).toLocaleString()} Ar`, 25, 129);
+    doc.text(`Reste: ${Number(f.reste || 0).toLocaleString()} Ar`, 25, 136);
 
     // Payment History Section
     doc.setFont("helvetica", "bold");
-    doc.text("Historique des Paiements:", 20, 145);
+    doc.text("Historique des Paiements:", 20, 153);
 
     // Table (Using data from the object)
     const tableData = [[
-        f.numeroPaiement || "1",
+        f.numeroPaiement || f.numeroPaiemen || "1",
         formatDate(f.date || f.datePaiement),
         f.modePaiement || "-",
-        `${Number(f.montantPaye || 0).toLocaleString()} Ar`
+        `${Number(f.aktuellPay || f.Aktuell_pay || f.montant || 0).toLocaleString()} Ar`
     ]];
 
     doc.autoTable({
-        startY: 152,
+        startY: 160,
         head: [['N°', 'Date', 'Mode', 'Montant']],
         body: tableData,
         theme: 'plain', // Black and white

@@ -1,7 +1,7 @@
 //======================session============================
 
 if (!window.fetch) {
-  alert("Ton navigateur est trop ancien");
+    alert("Ton navigateur est trop ancien");
 }
 
 // session
@@ -25,7 +25,6 @@ if (!nowtoken || !expireTime || now > expireTime) {
 });
 // Ajouter un écouteur d'événement pour réinitialiser le temps d'expiration à chaque mouvement de souris
 function logout() {
-    //sessionStorage.clear();
     window.location.href = "login.html";
 }
 // Fin du script session
@@ -83,11 +82,12 @@ function btnAjout() {
     }
     localStorage.removeItem("studentToEdit");
     localStorage.removeItem("editIndex");
-    localStorage.setItem("Mtrcl", parseInt(students[students.length - 1].matricule) + 1);
+    localStorage.setItem("Mtrcl", parseInt(students[students.length - 1].numero) + 1);
     location.href = "index.html";
 }
 
-const ETUDIENT_WEBHOOK = "https://hook.us2.make.com/pu7n7c9lh533ckeftgk7t7e83ls4o8sx";
+
+const ETUDIENT_WEBHOOK = "https://hook.us2.make.com/ybg7uxfelww1snww4uzmndq95dg7fkkl";
 async function fetchStudents() {
     const res = await fetch(ETUDIENT_WEBHOOK, {
         method: "POST",
@@ -103,30 +103,86 @@ async function fetchStudents() {
     }
 
     // Récupération de la réponse
-    const data = await res.json();
-    students = data;
-    console.log(data);
-    return data;
+    const rawData = await res.json();
+    const data = rawData.map(item => {
+        // Version robuste pour ignorer les problèmes de majuscule/minuscule ou d'espaces
+        const lowerItem = {};
+        for (let k in item) {
+            if (item.hasOwnProperty(k)) {
+                lowerItem[k.trim().toLowerCase()] = item[k];
+            }
+        }
 
+        return {
+            numero: item.numero || lowerItem.numero,
+            nom: item.nom || lowerItem.nom,
+            prenom: item.prenom || lowerItem.prenom,
+            dateNaissance: item.dateNaissance || lowerItem.datenaissance,
+            dateEntree: item.dateEntree || lowerItem.dateentree,
+            email: item.email || lowerItem.email,
+            telephone: item.telephone || lowerItem.telephone,
+            facebook: item.facebook || lowerItem.facebook,
+            niveau: item.niveau || lowerItem.niveau,
+            paiement: item.paiement || lowerItem.paiement,
+            totalAPayer: item.totalAPayer || item[" totalAPayer"] || lowerItem.totalapayer || 0,
+            montantPaye: item["montantPayé"] || item.montantPayé || lowerItem["montantpayé"] || lowerItem.montantpaye || 0,
+            a1: item.A1 || lowerItem.a1,
+            a2: item.A2 || lowerItem.a2,
+            b1: item.B1 || lowerItem.b1,
+            b2: item.B2 || lowerItem.b2,
+            c1: item.C1 || lowerItem.c1,
+            c2: item.C2 || lowerItem.c2,
+            cin: item.numCin || lowerItem.numcin || lowerItem.cin,
+            Adresse: item.adresse || lowerItem.adresse,
+            passport: item.numpass || lowerItem.numpass || lowerItem.passport,
+            datFinPass: item["date expiration pass"] || lowerItem["date expiration pass"],
+            numCop: item.numcopie || lowerItem.numcopie,
+            datFinCop: item["dateexpiration copie"] || lowerItem["dateexpiration copie"],
+            paramede: item.paramede || lowerItem.paramede,
+            Matricule: item.Matricule || lowerItem.matricule || item.matricule
+        };
+    });
+    students = data;
+    console.log("Données mappées :", data);
+    return data;
 }
 
-let students = [];
+// Déclaration unique de la variable globale
+if (typeof students === 'undefined') {
+    var students = [];
+}
 console.log("ok");
 async function loadStudents() {
+    // Force la réactualisation à chaque chargement pour éviter de lire un localStorage obsolète
+    /* try {
+         students = await fetchStudents();
+         localStorage.setItem("studentsData", JSON.stringify(students));
+     } catch(e) {
+         if (localStorage.getItem("studentsData")) {
+             students = JSON.parse(localStorage.getItem("studentsData"));
+         }
+     }*/
+    if (!localStorage.getItem("studentsData")) {
 
-    if (localStorage.getItem("studentsData")) {
-        students = JSON.parse(localStorage.getItem("studentsData"));
-
-    } else {
-        //hook de waiis
         students = await fetchStudents();
         localStorage.setItem("studentsData", JSON.stringify(students));
+        console.log("localstorage exist pas");
+
+    }
+    else {
+        students = JSON.parse(localStorage.getItem("studentsData"));
+        console.log("localstorage exist bien");
+
     }
 }
 window.onload = loadStudents;
 let editIndex = null;
-students = localStorage.getItem("studentsData") ? JSON.parse(localStorage.getItem("studentsData")) : [];
-console.log(students);
+// Initialisation depuis le cache si présent
+try {
+    const cached = localStorage.getItem("studentsData");
+    if (cached) students = JSON.parse(cached);
+} catch (e) { console.error("Cache error", e); }
+console.log("Initial students:", students);
 
 
 // ===== AFFICHAGE =====
@@ -150,11 +206,12 @@ function displayStudents(dataToDisplay = students) {
 
         // 1. Load local payment data for synchronization
         const facturesData = JSON.parse(localStorage.getItem("facturesData") || "[]");
+        
         // Fix: Use String conversion to avoid type mismatch (e.g., number vs string)
         const facture = facturesData.find(f => String(f.matricule) === String(s.matricule));
 
         // 2. Base totals from student metadata (totalAPayer is the source of truth for the debt)
-        const total = parseFloat(s.totalAPayer || s.montantAPayer) || 0;
+        const total = parseFloat(s.totalAPayer) || 0;
 
         // 3. Computed values from payment history (fallback to student fields if no local facture)
         const montantPaye = facture
@@ -185,10 +242,12 @@ function displayStudents(dataToDisplay = students) {
 
         table.innerHTML += `
 <tr class="border-b border-[#e2e8f0] hover:bg-[#f8fafc] bg-white transition-colors">
-<td class="p-[14px] text-gray-700 font-bold">${s.matricule || '–'}</td>
+<td class="p-[14px] text-gray-700 font-bold">${s.numero || '–'}</td>
+<td class="p-[14px] text-gray-700 font-bold">${s.Matricule || '–'}</td>
 <td class="p-[14px] text-gray-700 font-medium">${s.nom}</td>
 <td class="p-[14px] text-gray-700">${s.prenom}</td>
 <td class="p-[14px] text-gray-700">${isoToDate(s.dateNaissance) || '–'}</td>
+<td class="p-[14px] text-gray-700">${isoToDate(s.dateEntree) || '–'}</td>
 <td class="p-[14px] text-gray-700 font-bold">${calculateAge(s.dateNaissance)}</td>
 <td class="p-[14px] text-gray-700">${s.cin || '–'}</td>
 <td class="p-[14px] text-gray-700">${s.email}</td>
@@ -199,10 +258,8 @@ function displayStudents(dataToDisplay = students) {
 <td class="p-[14px] text-gray-700 font-bold">${total.toLocaleString()} Ar</td>
 <td class="p-[14px] text-gray-700 font-bold text-green-600">${montantPaye.toLocaleString()} Ar</td>
 <td class="p-[14px] text-gray-700 font-bold text-orange-600">${reste.toLocaleString()} Ar</td>
-<td class="p-[14px] text-center">
-    <span class="px-2 py-1 rounded-full text-[10px] font-bold uppercase transition-all ${paiementStatus === 'Payé' ? 'bg-green-100 text-green-700 border border-green-200' : paiementStatus === 'En cours' ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-red-100 text-red-700 border border-red-200'}">
-        ${paiementStatus}
-    </span>
+<td class="p-[14px] text-center text-xs font-bold uppercase ${paiementStatus === 'Payé' || paiementStatus === 'PAYE' ? 'bg-green-50 text-green-600' : paiementStatus === 'En cours' || paiementStatus === 'EN COURS' ? 'bg-blue-50/50 text-blue-600' : 'bg-red-50 text-red-600'}">
+    ${paiementStatus}
 </td>
 <td class="p-[14px] text-center text-gray-700">${s.a1}</td>
 <td class="p-[14px] text-center text-gray-700">${s.a2}</td>
@@ -244,7 +301,7 @@ function displayStudents(dataToDisplay = students) {
     });
 
 }
-
+console.log("liste des etudiant qui sont afficher", students);
 
 
 // ===== NETTOYER =====
@@ -268,33 +325,8 @@ function clearForm() {
 
 
 // ===== SAUVEGARDE =====
-
-function saveStudent() {
-    let student = {
-        id: editIndex === null ? Date.now() : students[editIndex].id,
-        nom: document.getElementById("nom").value,
-        prenom: document.getElementById("prenom").value,
-        dateNais: document.getElementById("dateNais").value,
-        email: document.getElementById("email").value,
-        tel: document.getElementById("tel").value,
-        adresse: document.getElementById("adresse").value,
-        niveau: document.getElementById("niveau").value,
-        passport: document.getElementById("passport").value,
-        cin: document.getElementById("cin").value
-    };
-
-    if (editIndex === null) {
-        students.push(student);
-    } else {
-        students[editIndex] = student;
-    }
-    localStorage.setItem("studentsData", JSON.stringify(students));
-    closeForm();
-    displayStudents();
-}
-
 let isSubmitting = false;
-let Ajout_mofif_webhook = "https://hook.us2.make.com/l3ykkvvwvvfws27xb1gkylc2bef1xpp3";
+let Ajout_mofif_webhook = "https://hook.us2.make.com/opeawjxysicr56wqy3ekpfkdll071u4t";
 async function ajoutermodifierEtudiant(event) {
 
     if (event) event.preventDefault();
@@ -317,8 +349,11 @@ async function ajoutermodifierEtudiant(event) {
     const checked = (id) => { const el = document.getElementById(id); return el ? el.checked : false; };
     const certStr = (ids) => ids.map(id => checked(id) ? id.slice(-1) : '').join('');
 
+    let existingStudent = editIndexParam !== null ? students[editIndexParam] : {};
+
     let student = {
-        id: editIndexParam !== null ? students[editIndexParam].id : Date.now(),
+        ...existingStudent,
+        id: editIndexParam !== null ? existingStudent.id : Date.now(),
         nom: getVal(["idNom", "nom"]),
         prenom: getVal(["idPrenom", "prenom"]),
         dateNaissance: getVal(["idDateNais"]),
@@ -326,7 +361,7 @@ async function ajoutermodifierEtudiant(event) {
         telephone: getVal(["idTel"]),
         Adresse: getVal(["idAdresse"]),
         niveau: getVal(["idNiveau", "niveau"]),
-        montantAPayer: getVal(["idMontant", "montantAPayer"]),
+        totalAPayer: parseFloat(getVal(["idMontant", "montantAPayer"])) || 0,
         a1: checked("A1"),
         a2: checked("A2"),
         c1: certStr(["C1L", "C1H", "C1M", "C1S"]),
@@ -339,6 +374,7 @@ async function ajoutermodifierEtudiant(event) {
         numCop: getVal(["idNumCop", "numCop"]),
         datFinCop: getVal(["idDatFinCop", "datFinCop"]),
         matricule: getVal(["idMatricule", "matricule"]),
+        Matricule: getVal(["idMatriculeString", "matriculeString"]),
         cin: getVal(["idNumCin", "cin"]),
         facebook: getVal(["idfcbk", "facebook"])
     };
@@ -355,33 +391,37 @@ async function ajoutermodifierEtudiant(event) {
 
     try {
         const dataToSend = {
-            matricule: student.matricule,
+            numero: student.matricule,
             nom: student.nom,
             prenom: student.prenom,
             dateNaissance: dateToISO(student.dateNaissance),
-            dateEntree: student.dateEntree,
             email: student.email,
             telephone: student.telephone,
             facebook: student.facebook,
             niveau: student.niveau,
-            totalAPayer: student.montantAPayer,
-            // Payments are handled in facturesData, not here
+            paiement: student.paiement || "EN COURS",
+            totalAPayer: student.totalAPayer || 0,
+            "montantPayé": student.montantPaye || 0,
             A1: student.a1,
             A2: student.a2,
             B1: student.b1,
             B2: student.b2,
             C1: student.c1,
             C2: student.c2,
-            Code: code,
-            Adresse: student.Adresse,
-            Paramede: student.paramede,
-            numPassport: student.passport,
-            expPassport: dateToISO(student.datFinPass),
-            numCop: student.numCop,
-            expCop: dateToISO(student.datFinCop),
-            cin: student.cin,
-            facebook: student.facebook
+            numCin: student.cin,
+            adresse: student.Adresse,
+            numpass: student.passport,
+            "date expiration pass": dateToISO(student.datFinPass),
+            numcopie: student.numCop,
+            "dateexpiration copie": dateToISO(student.datFinCop),
+            paramede: student.paramede,
+            Matricule: student.Matricule,
+            Code: code
         };
+
+        if (code !== "ajt") {
+            dataToSend.dateEntree = student.dateEntree;
+        }
 
         const res = await fetch(Ajout_mofif_webhook, {
             method: "POST",
@@ -420,11 +460,40 @@ async function ajoutermodifierEtudiant(event) {
 
 // ===== FILTRAGE =====
 
+// Logique d'exclusion mutuelle GLOBALE : si on change n'importe quel compteur, on décoche TOUTES les checkboxes modules
+function handleCountFilterChange(cert) {
+    const selector = "filterCount" + cert;
+    const countVal = document.getElementById(selector).value;
+    if (countVal !== "all") {
+        // Décoche tout globalement
+        document.querySelectorAll('.filterC1, .filterC2, .filterB1, .filterB2').forEach(cb => {
+            cb.checked = false;
+        });
+    }
+    filterStudents();
+}
+
+// Logique d'exclusion mutuelle GLOBALE : si on coche n'importe quel module, on remet TOUS les compteurs à "all"
+function handleModuleCheckboxChange(cert) {
+    // Si on coche quoi que ce soit, on reset tous les sélecteurs de nombre
+    document.getElementById("filterCountC1").value = "all";
+    document.getElementById("filterCountC2").value = "all";
+    document.getElementById("filterCountB1").value = "all";
+    document.getElementById("filterCountB2").value = "all";
+    
+    filterStudents();
+}
+
 function filterStudents() {
-    const query = document.getElementById("searchInput").value.toLowerCase();
+    const query = document.getElementById("searchInput").value.toLowerCase().trim();
     const a1Filter = document.getElementById("filterA1").value;
     const a2Filter = document.getElementById("filterA2").value;
     const paramedeFilter = document.getElementById("filterParamede").value;
+
+    const countC1 = document.getElementById("filterCountC1").value;
+    const countC2 = document.getElementById("filterCountC2").value;
+    const countB1 = document.getElementById("filterCountB1").value;
+    const countB2 = document.getElementById("filterCountB2").value;
 
     // Récupérer les modules cochés pour chaque certificat (Vertical Checkboxes)
     const getCheckedModules = (className) => {
@@ -438,12 +507,21 @@ function filterStudents() {
     const c2Modules = getCheckedModules("filterC2");
 
     const filtered = students.filter(s => {
-        // Recherche textuelle
+        // Recherche textuelle sécurisée et combinée
+        const nom = (s.nom || "").trim().toLowerCase();
+        const prenom = (s.prenom || "").trim().toLowerCase();
+        const fullName = `${nom} ${prenom}`.trim();
+        const reversedFullName = `${prenom} ${nom}`.trim();
+
         const matchesText =
-            s.nom.toLowerCase().includes(query) ||
-            s.prenom.toLowerCase().includes(query) ||
-            (s.cin && s.cin.toLowerCase().includes(query)) ||
-            (s.niveau && s.niveau.toLowerCase().includes(query));
+            nom.includes(query) ||
+            prenom.includes(query) ||
+            fullName.includes(query) ||
+            reversedFullName.includes(query) ||
+            (s.cin && String(s.cin).toLowerCase().includes(query)) ||
+            (s.niveau && String(s.niveau).toLowerCase().includes(query)) ||
+            (s.matricule && String(s.matricule).toLowerCase().includes(query)) ||
+            (s.Matricule && String(s.Matricule).toLowerCase().includes(query));
 
         if (!matchesText) return false;
 
@@ -458,18 +536,40 @@ function filterStudents() {
         if (paramedeFilter === "true" && !isTrue(valPara)) return false;
         if (paramedeFilter === "false" && isTrue(valPara)) return false;
 
-        // Filtres Certificats (OU logic : l'étudiant match s'il a AU MOINS UN des modules cochés)
-        const checkModulesOr = (studentVal, activeMods) => {
+        // Filtres Certificats (ET logic : l'étudiant match s'il possède TOUS les modules cochés)
+        const checkModulesAnd = (studentVal, activeMods) => {
             if (activeMods.length === 0) return true;
-            const sVal = studentVal || "";
-            // Retourne true si au moins un des modules cochés est inclus dans la valeur de l'étudiant
-            return activeMods.some(mod => sVal.includes(mod));
+            const sVal = (studentVal || "").toUpperCase();
+            // Retourne true uniquement si TOUS les modules cochés sont présents dans la valeur de l'étudiant
+            return activeMods.every(mod => sVal.includes(mod.toUpperCase()));
         };
 
-        if (!checkModulesOr(s.b1, b1Modules)) return false;
-        if (!checkModulesOr(s.b2, b2Modules)) return false;
-        if (!checkModulesOr(s.c1, c1Modules)) return false;
-        if (!checkModulesOr(s.c2, c2Modules)) return false;
+        if (!checkModulesAnd(s.b1, b1Modules)) return false;
+        if (!checkModulesAnd(s.b2, b2Modules)) return false;
+        if (!checkModulesAnd(s.c1, c1Modules)) return false;
+        if (!checkModulesAnd(s.c2, c2Modules)) return false;
+
+        // Filtres par Nombre de Modules par certificat (Calcul indépendant)
+        const getStrCount = (val) => {
+            if (!val) return 0;
+            const matches = String(val).toUpperCase().match(/[LMHS]/g);
+            return matches ? matches.length : 0;
+        };
+
+        const matchesCount = (studentVal, filterVal) => {
+            if (filterVal === "all") return true;
+            const count = getStrCount(studentVal);
+            if (filterVal === "1") return count === 1;
+            if (filterVal === "2+") return count >= 2;
+            if (filterVal === "3+") return count >= 3;
+            if (filterVal === "4") return count === 4;
+            return true;
+        };
+
+        if (!matchesCount(s.c1, countC1)) return false;
+        if (!matchesCount(s.c2, countC2)) return false;
+        if (!matchesCount(s.b1, countB1)) return false;
+        if (!matchesCount(s.b2, countB2)) return false;
 
         return true;
     });
@@ -522,8 +622,8 @@ async function deleteStudent(index) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-
-                matricule: x
+                numero: x,
+                Code: "sup"
             })
         });
         if (!res.ok) {
@@ -583,15 +683,21 @@ document.addEventListener("DOMContentLoaded", () => {
             numCop: ["numCop", "idNumCop"],
             datFinCop: ["datFinCop", "idDatFinCop"],
             matricule: ["matricule", "idMatricule"],
+            Matricule: ["Matricule", "idMatriculeString"],
             cin: ["cin", "idNumCin"],
             facebook: ["facebook", "idfcbk"],
-            montantAPayer: ["montantAPayer", "idMontant"],
+            montantAPayer: ["idMontant"],
+            totalAPayer: ["idMontant"],
         };
 
         for (let key in fields) {
             let el = document.getElementById(fields[key][0]) || document.getElementById(fields[key][1]);
             if (el) {
-                let val = student[key] || "";
+                let val = student[key];
+
+                if (val === undefined || val === null) {
+                    val = student.totalAPayer; // fallback important
+                }
                 if (val && typeof val === "string" && val.includes("T")) {
                     val = isoToDate(val);
                 }
@@ -614,7 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (matriculeField) {
             matriculeField.disabled = true;
             matriculeField.classList.add("bg-gray-100", "cursor-not-allowed");
-            matriculeField.title = "Le matricule ne peut pas être modifié.";
+            matriculeField.title = "Le numero ne peut pas être modifié.";
         }
 
         // Change le texte du bouton Soumettre en Modifier
@@ -633,7 +739,5 @@ function goToFacture(index) {
     let studentsData = JSON.parse(localStorage.getItem("studentsData"));
     let student = studentsData[index];
     localStorage.setItem("selectedStudent", JSON.stringify(student));
-    localStorage.setItem("Index de l'etudiant selectionner type nomber", index)
-
     window.location.href = "facture.html";
 }
