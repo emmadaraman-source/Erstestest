@@ -25,7 +25,7 @@ if (!nowtoken || !expireTime || now > expireTime) {
 });
 // Ajouter un écouteur d'événement pour réinitialiser le temps d'expiration à chaque mouvement de souris
 function logout() {
-    //sessionStorage.clear();
+    sessionStorage.clear();
     window.location.href = "login.html";
 }
 // Fin du script session
@@ -401,7 +401,8 @@ async function ajoutermodifierEtudiant(event) {
         matricule: getVal(["idMatricule", "matricule"]),
         Matricule: getVal(["idMatriculeString", "matriculeString"]),
         cin: getVal(["idNumCin", "cin"]),
-        facebook: getVal(["idfcbk", "facebook"])
+        facebook: getVal(["idfcbk", "facebook"]),
+        numero: students[students.length - 1].numero + 1
     };
 
     let code = "";
@@ -447,7 +448,6 @@ async function ajoutermodifierEtudiant(event) {
         if (code !== "ajt") {
             dataToSend.dateEntree = student.dateEntree;
         }
-        console.log("data ajout", dataToSend);
         const res = await fetch(Ajout_mofif_webhook, {
             method: "POST",
             headers: {
@@ -455,6 +455,7 @@ async function ajoutermodifierEtudiant(event) {
             },
             body: JSON.stringify(dataToSend)
         });
+        console.log("resulta",  res);
 
         if (!res.ok) {
             throw new Error("Network error");
@@ -466,10 +467,8 @@ async function ajoutermodifierEtudiant(event) {
             localStorage.setItem("studentsData", JSON.stringify(students));
             localStorage.removeItem("studentToEdit");
             localStorage.removeItem("editIndex");
-
             const message = (code === "mdf") ? "Étudiant modifié ✅" : "Étudiant ajouté ✅";
             alert(message);
-
             window.location.href = "list.html";
         }
     } catch (error) {
@@ -710,6 +709,7 @@ document.addEventListener("DOMContentLoaded", () => {
             facebook: ["facebook", "idfcbk"],
             montantAPayer: ["idMontant"],
             totalAPayer: ["idMontant"],
+            numero:["idMatricule"],
         };
 
         for (let key in fields) {
@@ -718,7 +718,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 let val = student[key];
 
                 if (val === undefined || val === null) {
-                    val = student.totalAPayer; // fallback important
+                    val = null/* student.totalAPayer*/; // fallback important
                 }
                 if (val && typeof val === "string" && val.includes("T")) {
                     val = isoToDate(val);
