@@ -1,0 +1,606 @@
+// facture.js - Shared logic for Payment and Invoice list
+
+document.addEventListener("DOMContentLoaded", () => {
+    const path = window.location.pathname;
+    const page = path.split("/").pop();
+
+    if (page === "facture.html") {
+        // initialiser la page de facture payement
+        initFacturePage();
+    } else if (page === "list-facture.html") {
+        //initialiser la page list facture
+        initListFacturePage();
+    }
+});
+
+// --- FACTURE PAGE LOGIC ---
+
+// Facture actuellement affichée
+let currentInvoice = null;
+// etudient selectionné
+let selectedStudent = null;
+
+async function initFacturePage() {
+    //recuperation de l'etudiant depuis le stockage local 
+    const studentStr = localStorage.getItem("selectedStudent");
+    if (!studentStr) {
+        alert("Aucun étudiant sélectionné.");
+        window.location.href = "list.html";
+        return;
+    }
+    selectedStudent = JSON.parse(studentStr);
+
+    // Rechercher une facture existante pour cet étudiant dans le cache local dans currentInvoice
+    if (!localStorage.getItem("facturesData")) {
+        console.log("Inicialisation du cache des factures depuis le backend...");
+        const response = await fetch("https://hook.us2.make.com/1vbfcorjkvg53yk4ki1ek14v7qmhvodq");
+
+        if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+
+        const listeFactureExistante = await response.json();
+
+        // Sauvegarder dans localStorage
+        localStorage.setItem("facturesData", JSON.stringify(listeFactureExistante));
+    }
+
+    // récupération des facture depuis le cache local
+    const factures = JSON.parse(localStorage.getItem("facturesData"));
+    currentInvoice = factures.filter(f => f.matricule === selectedStudent.Matricule);
+
+    // If no invoice exists, we just display the form with default values and student info
+    let numPayement = 0;
+    // il faut s'assurer que les donner de l'étudiant selectionner pour sont premier paiment aprés payement sont identique au type des donner dans la liste des facture
+    // il faut comparer le currentInvoice et le resultat du creat template avec les sonner
+    if (currentInvoice.length) {
+        numPayement = currentInvoice.length + 1;
+    } else {
+        numPayement = 1;
+
+    }
+
+    fillFactureForm(selectedStudent, numPayement);
+    /*
+    function createTemplateInvoice(student) {
+        return {
+            reference: "FACT-" + crypto.randomUUID(),
+    
+            matricule: student.Matricule,
+            nom: student.nom,
+            prenom: student.prenom,
+            niveau: student.niveau,
+            date : null,
+            
+            // le montantPaye est neglisable
+            totalAPayer: student.totalAPayer,
+            dejaPayer: student.montantPaye,
+            reste: student.totalAPayer - student.montantPaye, // calcul automatique
+     
+            aktuellpay: student.Aktuell_pay,
+            modePaiement: student.modePaiement,
+            raison: "Acompte",
+            numeroPaiement: 0,
+            // calcul dynamique (ne pas stocker si possible)
+            paiement: (student.totalAPayer - student.montantPaye) <= 0
+                ? "PAYE"
+                : "EN COURS"
+        }
+    */
+};
+
+// Remplit le formulaire de facture avec les données des factures existantes
+function fillFactureForm(infoStudent, numeroNextFact) {
+    let refFacture = "FACT-" + crypto.randomUUID();
+    let rest = infoStudent.totalAPayer - infoStudent.montantPaye;
+    // Student Info (Readonly)
+    document.getElementById("vraiMatricule").value = infoStudent.Matricule || "pas de matricule";
+
+    document.getElementById("nom").value = infoStudent.nom || "pas de nom";
+    document.getElementById("prenom").value = infoStudent.prenom || "pas de prenom";
+    document.getElementById("niveau").value = infoStudent.niveau || "pas de niveau";
+
+    // Invoice Info
+    document.getElementById("reference").value = refFacture;
+    document.getElementById("displayRef").innerText = refFacture;
+    document.getElementById("dateFacture").value = isoToDate(new Date().toISOString());
+    document.getElementById("paymentNumber").value = numeroNextFact;
+
+    // Amounts
+
+    document.getElementById("totalAPayer").innerText = infoStudent.totalAPayer.toLocaleString();
+    document.getElementById("dejaPayer").innerText = infoStudent.montantPaye.toLocaleString();
+    document.getElementById("reste").innerText = rest.toLocaleString();
+
+    // History
+    const factures = JSON.parse(localStorage.getItem("facturesData"));
+    currentInvoice = factures.filter(f => f.matricule === infoStudent.Matricule);
+
+    if (currentInvoice) {
+        renderPaymentHistory(currentInvoice);
+    }
+    console.log("rest", rest)
+    updateStatusBadge(rest);
+
+    // Toggle Payment Form Visibility
+    const formSection = document.getElementById("paymentFormSection");
+    if (formSection) {
+        if (rest = 0) {
+            formSection.classList.add("hidden");
+        } else {
+            formSection.classList.remove("hidden");
+        }
+    }
+}
+
+function renderPaymentHistory(payments) {
+    const tbody = document.getElementById("paymentHistory");
+    console.log("p.date", payments)
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    payments.forEach(p => {
+        const row = `
+            <tr class="hover:bg-gray-50 border-b border-gray-50">
+                <td class="p-4 font-medium text-gray-500">${p.numeroPaiement}</td>
+                <td class="p-4 text-gray-700">${p.date}</td>
+                <td class="p-4"><span class="px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-bold uppercase">${p.modePaiement
+            }</span></td>
+                <td class="p-4 font-bold text-gray-900">${p.aktuellPay.toLocaleString()} Ar</td>
+                <td class="p-4 font-bold text-gray-900">${p.reste.toLocaleString()} Ar</td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+}
+
+
+function updateStatusBadge(reste) {
+    const badge = document.getElementById("statusBadge");
+    if (!badge) return;
+
+    if (reste = 0) {
+        badge.innerText = "SOLDE RÉGLÉ";
+        badge.className = "p-3 rounded-lg bg-green-500 text-white text-center font-bold text-sm uppercase tracking-widest mt-6";
+    } else {
+        badge.innerText = "EN ATTENTE";
+        badge.className = "p-3 rounded-lg bg-orange-500 text-white text-center font-bold text-sm uppercase tracking-widest mt-6";
+    }
+}
+
+async function enregistrerPaiement() {
+
+    let totalAPayer = parseFloat(document.getElementById("totalAPayer").innerText.replace(/,/g, ""));
+    let montants = parseFloat(document.getElementById("nouveauPaiement").value);
+    let dejaPayer = parseFloat(document.getElementById("dejaPayer").innerText.replace(/,/g, "")) + montants;
+    let rest = totalAPayer - (dejaPayer + montants);
+
+    const data = {
+        etudiant: {
+            matricule: document.getElementById("vraiMatricule").value,
+            nom: document.getElementById("nom").value,
+            prenom: document.getElementById("prenom").value,
+            niveau: document.getElementById("niveau").value
+        },
+        facture: {
+            reference: document.getElementById("reference").value,
+            dateFacture: document.getElementById("dateFacture").value,
+            paymentNumber: document.getElementById("paymentNumber").value,
+            raison: document.getElementById("idReason").value || "Acompte",
+            modePaiement: document.getElementById("modePaiement").value
+        },
+        paiement: {
+            montant: montants
+        },
+        resume: {
+            totalAPayer: totalAPayer,
+            dejaPayerPlusNouvelPayement: dejaPayer,
+            resteMoinNouvelPayement: rest,
+            status: (rest) > 0 ? "En cours" : "Payer"
+        }
+    };
+
+
+    if (isNaN(montants) || montants == 0) {
+        alert("Veuillez entrer un montant valide.");
+        return;
+    }
+
+    /*
+        let factures = JSON.parse(localStorage.getItem("facturesData") || "[]");
+    
+        // 2. Prepare temporary invoice state
+        let tempInvoice = currentInvoice ? JSON.parse(JSON.stringify(currentInvoice)) : null;
+    
+        if (!tempInvoice) {
+            const today = new Date().toLocaleDateString('fr-CA');
+            // Synchronize with totalAPayer and montantPaye from student list
+            const total = parseFloat(selectedStudent.totalAPayer) || 0;
+            const deja = parseFloat(selectedStudent.montantPaye) || 0;
+            const reste = total - deja;
+    
+            tempInvoice = {
+                id: Date.now(),
+                reference: "FACT-" + Date.now(),
+                dateFacture: today,
+                matricule: selectedStudent.matricule,
+                Matricule: selectedStudent.Matricule || "",
+                nom: selectedStudent.nom,
+                prenom: selectedStudent.prenom,
+                niveau: selectedStudent.niveau,
+                totalAPayer: total,
+                dejaPayer: deja,
+                reste: reste,
+                paymentNumber: 0,
+                payments: [],
+                reason: reason
+            };
+        }
+    */
+    
+    if (montants > rest) {
+        alert("Le montant dépasse le reste à payer. L'envoi est annulé.");
+        return;
+    }
+    let nouvelDonnerFacture = {
+        aktuellPay: data.paiement.montant,
+        date: data.facture.dateFacture, // format ISO (ex: "2026-04-20T00:00:00.000Z")
+        dejaPayer: data.resume.dejaPayerPlusNouvelPayement,
+        matricule: data.etudiant.matricule,
+        modePaiement: data.facture.modePaiement,
+        montantPaye: data.paiement.montant,
+        niveau: data.etudiant.niveau,
+        nom: data.etudiant.nom,
+        numeroPaiement: data.facture.paymentNumber,
+        paiement: data.resume.status,
+        prenom: data.etudiant.prenom,
+        raison: data.facture.raison,
+        reference: data.facture.reference,
+        reste: data.resume.resteMoinNouvelPayement,
+        totalAPayer: data.resume.totalAPayer
+    };
+    console.log("nouvel donner facture",nouvelDonnerFacture);
+    let facture = JSON.parse(localStorage.getItem("facturesData"));
+    facture.push(nouvelDonnerFacture);
+
+    localStorage.removeItem("facturesData");
+    localStorage.setItem("facturesData",JSON.stringify(facture));
+    let listEtudiant = JSON.parse(localStorage.getItem("studentsData"));
+    let idStudentSelected = JSON.parse(localStorage.getItem("Index de l'etudiant selectionner type nombre"));
+    
+    console.log("index de l'etudiant selectioner", idStudentSelected);
+    console.log("list des etudient avant payement", listEtudiant);
+    let mdToModifLocalStorage = listEtudiant[idStudentSelected];
+    mdToModifLocalStorage.montantPaye = data.resume.dejaPayerPlusNouvelPayement;
+    console.log("liste etudiant après payement", mdToModifLocalStorage);
+
+    mdToModifLocalStorage.reste = data.resume.resteMoinNouvelPayement;
+    listEtudiant[idStudentSelected] = mdToModifLocalStorage;
+    localStorage.removeItem("studentsData");
+    localStorage.setItem("studentsData",JSON.stringify(listEtudiant));
+
+    // 3. Prepare data for the webhook (Final state values)
+    //const today = new Date().toLocaleDateString('fr-CA');
+
+
+    // 4. Send to Webhook with Timeout Protection
+   // const controller = new AbortController();
+   // const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+    try {
+
+        const response = await fetch("https://hook.us2.make.com/md3yx3d5vv6giauqd3qe5cn5colnbnl3", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+
+    //    clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`HTTP Error ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        // Ensure backend explicitly confirmed success
+        if (result && result.success === false) {
+            throw new Error("Webhook returned success:false");
+        }
+
+      //  console.log("Webhook success confirmed");
+
+
+    
+        } catch (error) {
+            console.error("Webhook error:", error);
+            alert("Erreur : connexion impossible. Paiement non enregistré.");
+        }
+}
+
+// --- LIST FACTURES PAGE LOGIC ---
+
+let allFactures = []; // Global storage for facture data
+
+// Convertit une date ISO (ex: "2026-04-14T00:00:00.000Z") en "14/04/2026"
+function formatDate(dateStr) {
+    if (!dateStr) return "-";
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr; // Si déjà formatée, la retourner telle quelle
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function initListFacturePage() {
+    // 1. Afficher instantanément depuis localStorage
+    const cached = JSON.parse(localStorage.getItem("facturesData") || "[]");
+    if (cached.length > 0) {
+        allFactures = cached;
+        renderFacturesTableLocale();
+    }
+    // 2. Synchronisation automatique en arrière-plan (silencieuse)
+    syncFacturesDepuisServeur();
+}
+
+// Rendu local (depuis allFactures) sans appel réseau — déclenche le filtre après chargement
+function renderFacturesTableLocale() {
+    const counter = document.getElementById("facturesCount");
+    if (counter) counter.textContent = allFactures.length + " facture(s)";
+
+    // Après chaque chargement, ré-appliquer les filtres actifs (ou tout afficher)
+    filtrerFactures();
+}
+
+// ===== LOGIQUE DE FILTRAGE =====
+
+/**
+ * Appelé à chaque saisie dans l'un des deux champs de filtre.
+ * Les deux filtres s'appliquent simultanément (ET logique).
+ */
+function filtrerFactures() {
+    const tbody = document.getElementById("facturesTable");
+    if (!tbody) return;
+
+    const texte = (document.getElementById("filterTexte")?.value || "").trim().toLowerCase();
+    const numero = (document.getElementById("filterNumero")?.value || "").trim();
+
+    // Afficher / masquer les boutons "×" selon si un filtre est actif
+    const btnClearTexte = document.getElementById("clearTexte");
+    const btnClearNumero = document.getElementById("clearNumero");
+    if (btnClearTexte) btnClearTexte.classList.toggle("hidden", texte === "");
+    if (btnClearNumero) btnClearNumero.classList.toggle("hidden", numero === "");
+
+    tbody.innerHTML = "";
+
+    if (!allFactures || allFactures.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="14" class="p-12 text-center text-gray-400 italic">Aucune facture en cache. Cliquez sur Actualiser.</td></tr>`;
+        return;
+    }
+
+    const resultats = allFactures.filter((f, _i) => {
+        // ── Filtre texte (référence, nom, prénom, niveau) ──
+        let passTexte = true;
+        if (texte !== "") {
+            const ref = (f.reference || "").toLowerCase();
+            const nom = (f.nom || "").toLowerCase();
+            const prenom = (f.prenom || "").toLowerCase();
+            const niveau = (f.niveau || "").toLowerCase();
+            passTexte = ref.includes(texte) || nom.includes(texte) ||
+                prenom.includes(texte) || niveau.includes(texte);
+        }
+
+        // ── Filtre numéro de paiement (chiffres uniquement, correspondance exacte) ──
+        let passNumero = true;
+        if (numero !== "") {
+            const numPaie = String(f.numeroPaiement || f.numeroPaiemen || "");
+            passNumero = numPaie === numero;
+        }
+
+        return passTexte && passNumero;
+    });
+
+    // Mise à jour du compteur de résultats
+    const filterResult = document.getElementById("filterResult");
+    if (filterResult) {
+        if (texte !== "" || numero !== "") {
+            filterResult.textContent = `${resultats.length} résultat(s) sur ${allFactures.length}`;
+        } else {
+            filterResult.textContent = "";
+        }
+    }
+
+    if (resultats.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="14" class="p-10 text-center text-gray-400 italic">Aucune facture ne correspond aux critères.</td></tr>`;
+        return;
+    }
+
+    resultats.forEach((f, index) => {
+        // Retrouver l'index réel dans allFactures pour les boutons PDF/Supprimer
+        const realIndex = allFactures.indexOf(f);
+        const row = `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="p-4 font-mono text-[10px] font-bold text-blue-600">${f.reference || "-"}</td>
+                <td class="p-4 text-xs text-gray-600 whitespace-nowrap">${formatDate(f.date || f.datePaiement)}</td>
+                <td class="p-4 text-sm font-bold text-blue-800">${f.matricule || f.Matricule || "-"}</td>
+                <td class="p-4 text-sm text-gray-700">${f.nom || "-"}</td>
+                <td class="p-4 text-sm text-gray-700">${f.prenom || "-"}</td>
+                <td class="p-4 text-center"><span class="px-2 py-0.5 rounded bg-gray-100 text-[10px] whitespace-nowrap">${f.niveau || "-"}</span></td>
+                <td class="p-4 text-xs text-gray-600">${f.raison || "-"}</td>
+                <td class="p-4 text-xs text-gray-600">${f.modePaiement || "-"}</td>
+                <td class="p-4 text-center text-xs text-gray-600 font-bold">${f.numeroPaiement || f.numeroPaiemen || "-"}</td>
+                <td class="p-4 text-center text-xs font-bold text-blue-600 bg-blue-50/50">${f.paiement || "0"}</td>
+                <td class="p-4 text-sm font-bold text-purple-600 whitespace-nowrap">${Number(f.aktuellPay || f.Aktuell_pay || 0).toLocaleString()} Ar</td>
+                <td class="p-4 text-sm font-bold text-green-600 whitespace-nowrap">${Number(f.montantPaye || f.dejaPayer || f.DejatPayer || 0).toLocaleString()} Ar</td>
+                <td class="p-4 text-sm font-bold text-gray-900 whitespace-nowrap">${Number(f.totalAPayer || 0).toLocaleString()} Ar</td>
+                <td class="p-4 text-sm font-black ${parseFloat(f.reste) > 0 ? 'text-orange-600' : 'text-green-600'} whitespace-nowrap">${Number(f.reste || 0).toLocaleString()} Ar</td>
+                <td class="p-4">
+                    <div class="flex items-center gap-1">
+                        <button onclick="exportFacturePDF(${realIndex})" class="p-1.5 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all shadow-sm" title="Exporter PDF">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        </button>
+                        <button onclick="supprimerFacture(${realIndex})" class="p-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all shadow-sm" title="Supprimer">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+        tbody.innerHTML += row;
+    });
+}
+
+/**
+ * Empêche la saisie de tout caractère non numérique dans le champ N° Paiement.
+ */
+function onNumeroInput(input) {
+    input.value = input.value.replace(/\D/g, "");
+}
+
+/**
+ * Efface un champ de filtre donné et relance le filtrage.
+ */
+function clearFilter(fieldId) {
+    const el = document.getElementById(fieldId);
+    if (el) { el.value = ""; el.focus(); }
+    filtrerFactures();
+}
+// ===== FIN LOGIQUE DE FILTRAGE =====
+
+// Synchronisation depuis le serveur webhook → met à jour le localStorage
+async function syncFacturesDepuisServeur() {
+    const tbody = document.getElementById("facturesTable");
+    if (!tbody) return;
+
+    // Montrer le spinner seulement si aucun cache n'est affiché
+    if (allFactures.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="14" class="p-12 text-center">
+                    <div class="flex flex-col items-center justify-center gap-3">
+                        <div class="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <p class="text-gray-500 font-medium">Chargement des factures...</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    try {
+        if (!localStorage.getItem("facturesData")) {
+            const response = await fetch("https://hook.us2.make.com/1vbfcorjkvg53yk4ki1ek14v7qmhvodq");
+
+            if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
+
+            const data = await response.json();
+            allFactures = Array.isArray(data) ? data : [];
+
+            // Sauvegarder dans localStorage
+            localStorage.setItem("facturesData", JSON.stringify(allFactures));
+        }
+        renderFacturesTableLocale();
+
+    } catch (error) {
+        console.error("Erreur sync factures:", error);
+        // En cas d'erreur réseau, conserver l'affichage du cache
+        if (allFactures.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="14" class="p-12 text-center text-red-500">
+                        <div class="flex flex-col items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                            <p class="font-bold text-lg">Impossible de charger les factures</p>
+                            <p class="text-sm opacity-70">Vérifiez votre connexion.</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+}
+
+function voirFacture(matricule) {
+    const studentsData = JSON.parse(localStorage.getItem("studentsData") || "[]");
+    const student = studentsData.find(s => s.matricule === matricule);
+
+    if (student) {
+        localStorage.setItem("selectedStudent", JSON.stringify(student));
+        window.location.href = "facture.html";
+    } else {
+        alert("Information de l'étudiant introuvable.");
+    }
+}
+
+function supprimerFacture(index) {
+    if (confirm("Voulez-vous vraiment supprimer cette facture de la liste ?")) {
+        allFactures.splice(index, 1);
+        // Persister la suppression dans localStorage
+        localStorage.setItem("facturesData", JSON.stringify(allFactures));
+        renderFacturesTableLocale();
+    }
+}
+
+function exportFacturePDF(index) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const f = allFactures[index];
+
+    if (!f) return;
+
+    // Title
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text("FACTURE", 105, 20, { align: "center" });
+
+    // Reference and Date
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Référence: ${f.reference || "-"}`, 20, 35);
+    doc.text(`Date: ${formatDate(f.date || f.dateFacture)}`, 20, 40);
+
+    // Student Info Section
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Informations Étudiant:", 20, 55);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`numero: ${f.matricule}`, 25, 65);
+    doc.text(`Matricule: ${f.Matricule || "-"}`, 25, 72);
+    doc.text(`Nom: ${f.nom}`, 25, 79);
+    doc.text(`Prénom: ${f.prenom}`, 25, 86);
+    doc.text(`Niveau: ${f.niveau}`, 25, 93);
+
+    // Summary Section
+    doc.setFont("helvetica", "bold");
+    doc.text("Résumé:", 20, 105);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(`Total à payer: ${Number(f.totalAPayer || 0).toLocaleString()} Ar`, 25, 115);
+    doc.text(`Versement actuel: ${Number(f.aktuellPay || f.Aktuell_pay || 0).toLocaleString()} Ar`, 25, 122);
+    doc.text(`Total déjà payé: ${Number(f.montantPaye || f.dejaPayer || f.DejatPayer || 0).toLocaleString()} Ar`, 25, 129);
+    doc.text(`Reste: ${Number(f.reste || 0).toLocaleString()} Ar`, 25, 136);
+
+    // Payment History Section
+    doc.setFont("helvetica", "bold");
+    doc.text("Historique des Paiements:", 20, 153);
+
+    // Table (Using data from the object)
+    const tableData = [[
+        f.numeroPaiement || f.numeroPaiemen || "1",
+        formatDate(f.date || f.datePaiement),
+        f.modePaiement || "-",
+        `${Number(f.aktuellPay || f.Aktuell_pay || f.montant || 0).toLocaleString()} Ar`
+    ]];
+
+    doc.autoTable({
+        startY: 160,
+        head: [['N°', 'Date', 'Mode', 'Montant']],
+        body: tableData,
+        theme: 'plain', // Black and white
+        styles: { textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.1 },
+        headStyles: { fontStyle: 'bold', fillColor: [240, 240, 240] }
+    });
+
+    // Signature
+    const finalY = doc.lastAutoTable.finalY || 152;
+    doc.setFont("helvetica", "bold");
+    doc.text("Signature", 185, finalY + 25, { align: "right" });
+
+    // Save
+    doc.save(`facture_${f.reference}.pdf`);
+}
