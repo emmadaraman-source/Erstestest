@@ -32,7 +32,7 @@ async function initFacturePage() {
 
     // Rechercher une facture existante pour cet étudiant dans le cache local dans currentInvoice
     if (!localStorage.getItem("facturesData")) {
-        console.log("Inicialisation du cache des factures depuis le backend...");
+        //console.log("Inicialisation du cache des factures depuis le backend...");
         const response = await fetch("https://hook.us2.make.com/1vbfcorjkvg53yk4ki1ek14v7qmhvodq");
 
         if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
@@ -112,12 +112,13 @@ function fillFactureForm(infoStudent, numeroNextFact) {
 
     // History
     const factures = JSON.parse(localStorage.getItem("facturesData"));
-    currentInvoice = factures.filter(f => f.matricule === infoStudent.Matricule);
 
+    currentInvoice = factures.filter(f => f.matricule === infoStudent.Matricule);
+    console.log("current invoice", currentInvoice);
     if (currentInvoice) {
         renderPaymentHistory(currentInvoice);
     }
-    console.log("rest", rest)
+    
     updateStatusBadge(rest);
 
     // Toggle Payment Form Visibility
@@ -133,10 +134,12 @@ function fillFactureForm(infoStudent, numeroNextFact) {
 
 function renderPaymentHistory(payments) {
     const tbody = document.getElementById("paymentHistory");
-    console.log("p.date", payments)
     if (!tbody) return;
     tbody.innerHTML = "";
+    let f = 0
+    console.log("payement", payments);
     payments.forEach(p => {
+        f = 0;
         const row = `
             <tr class="hover:bg-gray-50 border-b border-gray-50">
                 <td class="p-4 font-medium text-gray-500">${p.numeroPaiement}</td>
@@ -148,6 +151,7 @@ function renderPaymentHistory(payments) {
             </tr>
         `;
         tbody.innerHTML += row;
+        f = 1;
     });
 }
 
@@ -170,7 +174,7 @@ async function enregistrerPaiement() {
     let totalAPayer = parseFloat(document.getElementById("totalAPayer").innerText.replace(/,/g, ""));
     let montants = parseFloat(document.getElementById("nouveauPaiement").value);
     let dejaPayer = parseFloat(document.getElementById("dejaPayer").innerText.replace(/,/g, "")) + montants;
-    let rest = totalAPayer - (dejaPayer + montants);
+    let rest = totalAPayer - (dejaPayer);
 
     const data = {
         etudiant: {
@@ -197,7 +201,10 @@ async function enregistrerPaiement() {
         }
     };
 
-
+    console.log("montant",montants);
+    console.log("rest",totalAPayer-( dejaPayer + montants));
+    console.log("totalapayer" , totalAPayer);
+    console.log("dejat payer" , dejaPayer);
     if (isNaN(montants) || montants == 0) {
         alert("Veuillez entrer un montant valide.");
         return;
@@ -234,8 +241,8 @@ async function enregistrerPaiement() {
             };
         }
     */
-    
-    if (montants > rest) {
+    console.log("rest", rest);
+    if (rest <0) {
         alert("Le montant dépasse le reste à payer. L'envoi est annulé.");
         return;
     }
@@ -281,8 +288,8 @@ async function enregistrerPaiement() {
 
 
     // 4. Send to Webhook with Timeout Protection
-   // const controller = new AbortController();
-   // const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
     try {
 
@@ -292,7 +299,7 @@ async function enregistrerPaiement() {
             body: JSON.stringify(data),
         });
 
-    //    clearTimeout(timeoutId);
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
             throw new Error(`HTTP Error ${response.status}`);
@@ -306,6 +313,9 @@ async function enregistrerPaiement() {
         }
 
       //  console.log("Webhook success confirmed");
+        if(result.success){
+            alert("payement ajouter, le Facture est envoyer dans le boite mail du destinataire");
+        }
 
 
     
